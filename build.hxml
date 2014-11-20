@@ -1,0 +1,21 @@
+-x BuildNeko.hx
+
+--next
+
+-cp src
+-dce full
+-resource game.mtt@game
+-main Index
+-neko neko/index.n
+
+--next
+
+-x BuildPHP.hx
+
+--next
+
+-cp src
+-dce full
+-resource game.mtt@game
+-main Index
+-php php/
