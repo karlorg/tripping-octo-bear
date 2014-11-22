@@ -12,12 +12,17 @@ import sys.db.Types;
 class Index {
 
 	public static function main() {
+		haxe.Log.trace = function(v : Dynamic, infos : haxe.PosInfos = null)
+			: Void
+			{
+				Sys.stderr().writeString(v + "\n");
+			}
 		try {
 			// looks for a method of WebApi called 'doXxx' where 'xxx' is
 			// the requested page
 			Dispatch.run(Web.getURI(), Web.getParams(), new WebApi());
 		} catch (e : DispatchError) {
-			Web.redirect("game");
+			Web.redirect("listgames");
 			return;
 		}
 	}
@@ -32,15 +37,54 @@ class WebApi {
 
 	public function new() { }
 
+	public function doListgames() : Void {
+		initDb();
+
+		var games = GoGame.manager.search(true, { orderBy : id });
+
+		/* build html for game list */
+		var gamelistHtml : String;
+		{
+			var gamelistBuf = new StringBuf();
+			for (game in games) {
+				var idStr = Std.string(game.id);
+				gamelistBuf.add('<a href="game?gameId=' + idStr + '">'
+				+ idStr + '</a> ');
+			}
+			gamelistHtml = gamelistBuf.toString();
+		}
+	
+		/* write the page */
+		var template = new haxe.Template(haxe.Resource.getString("listgames"));
+		var output = template.execute({ gamelist: gamelistHtml });
+		Lib.print(output);
+	}
+
 	public function doGame(args : {
+		gameId : Null<Int>,
 		playNo : Null<Int>, playAt : Null<String> }) : Void
 	{
 		initDb();
 
-		playMove(args.playNo, args.playAt);
+		if (args.gameId == null) {
+			trace("no game id provided with game request");
+			Web.redirect("listgames");
+			return;
+		}
 
-		var gameNo = 0;
-		var moves = GoMove.manager.search($gameId == gameNo);
+		var gameList = GoGame.manager.search($id == args.gameId);
+		if (gameList.length == 0) {
+			trace("no such game " + args.gameId);
+			Web.redirect("gamelist");
+			return;
+		} else if (gameList.length > 1) {
+			trace("eek! Multiple games with id " + args.gameId);
+		}
+		var game = gameList.first();
+
+		playMove(game, args.playNo, args.playAt);
+
+		var moves = GoMove.manager.search($game == game);
 
 		/* build a 2d array of `null` for empty spaces, numbers for stones (by
 		 * default 0 is black, 1 is white)
@@ -66,7 +110,9 @@ class WebApi {
 					gobanBuf.add("<td>");
 					switch (goban[y][x]) {
 						case null:
-							gobanBuf.add('<a href="game?playAt=');
+							gobanBuf.add('<a href="game?gameId=');
+							gobanBuf.add(Std.string(args.gameId));
+							gobanBuf.add('&playAt=');
 							gobanBuf.add(String.fromCharCode("a".code + x));
 							gobanBuf.add(String.fromCharCode("a".code + y));
 							gobanBuf.add('&playNo=' + moveCount);
@@ -100,6 +146,15 @@ class WebApi {
 		}
 		sys.db.Manager.initialize();
 		sys.db.Manager.cnx = sys.db.Sqlite.open(Index.dbFilename);
+		if (!sys.db.TableCreate.exists(GoGame.manager)) {
+			sys.db.TableCreate.create(GoGame.manager);
+			/* until we have UI for adding games, add some demo ones */
+			for (i in 0...3) {
+				var game = new GoGame();
+				game.size = 19;
+				game.insert();
+			}
+		}
 		if (!sys.db.TableCreate.exists(GoMove.manager)) {
 			sys.db.TableCreate.create(GoMove.manager);
 		}
@@ -110,9 +165,9 @@ class WebApi {
 	 * Add a move into the GoMove db table.
 	 */
 	private static function addMove(
-		game: Int, moveNo: Int, color: Int, col: Int, row: Int) : Void {
+		game: GoGame, moveNo: Int, color: Int, col: Int, row: Int) : Void {
 		var move = new GoMove();
-		move.gameId = game;
+		move.game = game;
 		move.moveNo = moveNo;
 		move.color = color;
 		move.col = col;
@@ -124,20 +179,25 @@ class WebApi {
 	 * Check and play a move specified as request parameters.
 	 */
 	private static function playMove(
-		moveNo : Null<Int>, coordsStr : Null<String>) : Void
+		game : GoGame, moveNo : Null<Int>, coordsStr : Null<String>) : Void
 	{
 		if (moveNo == null || coordsStr == null) {
 			return;
 		}
 
-		var lastMoveList : List<GoMove> =
-			GoMove.manager.search($gameId == 0,
-				{ orderBy : -moveNo, limit : 1 });
-		var lastMoveNo : Int = if (lastMoveList.length == 0) {
-			-1;
-		} else {
-			lastMoveList.first().moveNo;
+		// get the number of the last move played
+		var lastMoveNo : Int;
+		{
+			var lastMoveList : List<GoMove> =
+				GoMove.manager.search($game == game,
+					{ orderBy : -moveNo, limit : 1 });
+			if (lastMoveList.length == 0) {
+				lastMoveNo = -1;
+			} else {
+				lastMoveNo = lastMoveList.first().moveNo;
+			}
 		}
+
 		if (lastMoveNo != moveNo - 1) {
 			return;
 		}
@@ -149,12 +209,13 @@ class WebApi {
 		}
 		var playAtX = playAtXC - "a".code;
 		var playAtY = playAtYC - "a".code;
-		if (playAtX < 0 ||  playAtX >= 19 || playAtY < 0 || playAtY >= 19) {
+		if (playAtX < 0 || playAtX >= Index.boardSize
+		 || playAtY < 0 || playAtY >= Index.boardSize) {
 			return;
 		}
 		
 		try {
-			addMove(0, moveNo, moveNo % 2, playAtX, playAtY);
+			addMove(game, moveNo, moveNo % 2, playAtX, playAtY);
 		} catch (e : Dynamic) {
 			// sometimes Neko throws an exception because the 'database is busy'
 			// but I don't know its type :/
@@ -163,6 +224,18 @@ class WebApi {
 	}
 
 
+}
+
+class GoGame extends sys.db.Object {
+	// nasty workaround for Sqlite's atypical handling of ids
+	// see https://github.com/HaxeFoundation/haxe/issues/2029#issuecomment-57548588
+	// in production will use MySQL anyway
+	#if php
+	public var id : SNull<SInt>;
+	#else
+	public var id : SId;
+	#end
+	public var size : SInt;
 }
 
 @:index(gameId) class GoMove extends sys.db.Object {
@@ -174,7 +247,7 @@ class WebApi {
 	#else
 	public var id : SId;
 	#end
-	public var gameId : SInt;
+	@:relation(gameId) public var game : GoGame;
 	public var moveNo : SInt; // SUInt causes problems with comparison in
 	// PHP, when comparing against standard Ints
 	public var color : STinyUInt;
