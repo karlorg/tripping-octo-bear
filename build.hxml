@@ -4,6 +4,7 @@
 
 -cp src
 -dce full
+-resource listgames.mtt@listgames
 -resource game.mtt@game
 -main Index
 -neko neko/index.n
@@ -16,6 +17,7 @@
 
 -cp src
 -dce full
+-resource listgames.mtt@listgames
 -resource game.mtt@game
 -main Index
 -php php/

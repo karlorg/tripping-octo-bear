@@ -2,10 +2,9 @@
   <head>
     <meta charset="UTF-8">
     <link href="index.css" rel="stylesheet" type="text/css">
-    <title>Game</title>
+    <title>Game list</title>
   </head>
   <body>
-    <p><a href="listgames">Back to game list</a></p>
-    <div align="center">::goban::</div>
+    <div>::gamelist::</div>
   </body>
 </html>
