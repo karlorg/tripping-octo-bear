@@ -1,4 +1,7 @@
 *~
 neko/
+neko-test/
 php/
+php-test/
 Build*.hx.n
+Test*.hx.n

@@ -29,7 +29,6 @@ class Index {
 
 	public static inline var boardSize = 19; // to be abolished once games
 	// have a table in the db with individual sizes
-	public static inline var dbFilename = "gothing.sqlite";
 	
 }
 
@@ -38,7 +37,7 @@ class WebApi {
 	public function new() { }
 
 	public function doListgames() : Void {
-		initDb();
+		Db.init();
 
 		var games = GoGame.manager.search(true, { orderBy : id });
 
@@ -64,7 +63,7 @@ class WebApi {
 		gameId : Null<Int>,
 		playNo : Null<Int>, playAt : Null<String> }) : Void
 	{
-		initDb();
+		Db.init();
 
 		if (args.gameId == null) {
 			trace("no game id provided with game request");
@@ -139,40 +138,27 @@ class WebApi {
 		Lib.print(output);
 	}
 
-	private static var dbReady = false;
-	private static inline function initDb() : Void {
-		if (dbReady) {
-			return;
-		}
-		sys.db.Manager.initialize();
-		sys.db.Manager.cnx = sys.db.Sqlite.open(Index.dbFilename);
-		if (!sys.db.TableCreate.exists(GoGame.manager)) {
-			sys.db.TableCreate.create(GoGame.manager);
-			/* until we have UI for adding games, add some demo ones */
-			for (i in 0...3) {
-				var game = new GoGame();
-				game.size = 19;
-				game.insert();
-			}
-		}
-		if (!sys.db.TableCreate.exists(GoMove.manager)) {
-			sys.db.TableCreate.create(GoMove.manager);
-		}
-		dbReady = true;
+	public function doNewgame() : Void {
+		Db.init();
+		Db.addGame(19);
+		redirect("listgames");
 	}
 
-	/*
-	 * Add a move into the GoMove db table.
-	 */
-	private static function addMove(
-		game: GoGame, moveNo: Int, color: Int, col: Int, row: Int) : Void {
-		var move = new GoMove();
-		move.game = game;
-		move.moveNo = moveNo;
-		move.color = color;
-		move.col = col;
-		move.row = row;
-		move.insert();
+	private function redirect(dest : String) : Void {
+		#if test
+		var re1 = ~/([^\?]+)([\?&]([^=]+)=([^&$]+))*/;
+		re1.match(dest);
+		var url = re1.matched(1);
+		var params = new Map<String,String>();
+		var i = 4;
+		while (re1.matched(i) != null) {
+			params.set(re1.matched(i-1), re1.matched(i));
+			i += 3;
+		}
+		Dispatch.run(url, params, this);
+		#else
+		Web.redirect(dest);
+		#end
 	}
 
 	/*
@@ -215,7 +201,7 @@ class WebApi {
 		}
 		
 		try {
-			addMove(game, moveNo, moveNo % 2, playAtX, playAtY);
+			Db.addMove(game, moveNo, moveNo % 2, playAtX, playAtY);
 		} catch (e : Dynamic) {
 			// sometimes Neko throws an exception because the 'database is busy'
 			// but I don't know its type :/
@@ -223,6 +209,71 @@ class WebApi {
 		}
 	}
 
+
+}
+
+class Db {
+
+	public static inline var defaultFilename = "gothing.sqlite";
+
+	public static var ready(default,null) = false;
+	public static function init(?filename: String) : Void {
+		if (ready) { return; }
+		if (filename == null) {
+			filename = defaultFilename;
+		}
+		sys.db.Manager.initialize();
+		sys.db.Manager.cnx = sys.db.Sqlite.open(filename);
+		if (!sys.db.TableCreate.exists(GoGame.manager)) {
+			sys.db.TableCreate.create(GoGame.manager);
+		}
+		if (!sys.db.TableCreate.exists(GoMove.manager)) {
+			sys.db.TableCreate.create(GoMove.manager);
+		}
+		ready = true;
+	}
+
+	public static function close() : Void {
+		ready = false;
+		if (sys.db.Manager.cnx != null) {
+			sys.db.Manager.cnx.close();
+			sys.db.Manager.cnx = null;
+		}
+		sys.db.Manager.cleanup();
+	}
+
+	/* Add a game into the GoGame db table.
+	 */
+	public static function addGame(
+		size: Int) : Void
+	{
+		if (!ready) {
+			trace("Database not initialised in addGame");
+			return;
+		}
+		var game = new GoGame();
+		game.size = size;
+		game.insert();
+	}
+
+	/*
+	 * Add a move into the GoMove db table.
+	 */
+	public static function addMove(
+		game: GoGame, moveNo: Int, color: Int, col: Int, row: Int) : Void
+	{
+		if (!ready) {
+			trace("Database not initialised in addMove");
+			return;
+		}
+		var move = new GoMove();
+		move.game = game;
+		move.moveNo = moveNo;
+		move.color = color;
+		move.col = col;
+		move.row = row;
+		move.insert();
+	}
 
 }
 

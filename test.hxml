@@ -1,0 +1,34 @@
+-x BuildNekoTest.hx
+
+--next
+
+-D test
+-cp src
+-dce full
+-resource listgames.mtt@listgames
+-resource game.mtt@game
+-main Test
+-neko neko-test/test.n
+
+--next
+
+-x TestNeko.hx
+
+--next
+
+-x BuildPHPTest.hx
+
+--next
+
+-D test
+-cp src
+-dce full
+-resource listgames.mtt@listgames
+-resource game.mtt@game
+-main Test
+--php-front test.php
+-php php-test/
+
+--next
+
+-x TestPHP.hx
