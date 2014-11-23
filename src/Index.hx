@@ -34,7 +34,14 @@ class Index {
 
 class WebApi {
 
-	public function new() { }
+	private var ops: ServerOps;
+
+	public function new(?ops: ServerOps) {
+		if (ops == null) {
+			ops = new DefaultServerOps();
+		}
+		this.ops = ops;
+	}
 
 	public function doListgames() : Void {
 		Db.init();
@@ -56,7 +63,7 @@ class WebApi {
 		/* write the page */
 		var template = new haxe.Template(haxe.Resource.getString("listgames"));
 		var output = template.execute({ gamelist: gamelistHtml });
-		Lib.print(output);
+		ops.print(output);
 	}
 
 	public function doGame(args : {
@@ -67,14 +74,14 @@ class WebApi {
 
 		if (args.gameId == null) {
 			trace("no game id provided with game request");
-			Web.redirect("listgames");
+			ops.redirect("listgames");
 			return;
 		}
 
 		var gameList = GoGame.manager.search($id == args.gameId);
 		if (gameList.length == 0) {
 			trace("no such game " + args.gameId);
-			Web.redirect("gamelist");
+			ops.redirect("gamelist");
 			return;
 		} else if (gameList.length > 1) {
 			trace("eek! Multiple games with id " + args.gameId);
@@ -135,30 +142,13 @@ class WebApi {
 		/* write the page */
 		var template = new haxe.Template(haxe.Resource.getString("game"));
 		var output = template.execute({ goban: gobanHtml });
-		Lib.print(output);
+		ops.print(output);
 	}
 
 	public function doNewgame() : Void {
 		Db.init();
 		Db.addGame(19);
-		redirect("listgames");
-	}
-
-	private function redirect(dest : String) : Void {
-		#if test
-		var re1 = ~/([^\?]+)([\?&]([^=]+)=([^&$]+))*/;
-		re1.match(dest);
-		var url = re1.matched(1);
-		var params = new Map<String,String>();
-		var i = 4;
-		while (re1.matched(i) != null) {
-			params.set(re1.matched(i-1), re1.matched(i));
-			i += 3;
-		}
-		Dispatch.run(url, params, this);
-		#else
-		Web.redirect(dest);
-		#end
+		ops.redirect("listgames");
 	}
 
 	/*
@@ -209,7 +199,25 @@ class WebApi {
 		}
 	}
 
+}
 
+/*
+ * Abstracts out server operations that are inconvenient or impossible during
+ * testing, so as to allow replacement with mocks etc.
+ */
+interface ServerOps {
+	public function print(str: String) : Void;
+	public function redirect(dest: String) : Void;
+}
+
+class DefaultServerOps implements ServerOps {
+	public function new() { }
+	public function print(str: String) : Void {
+		Lib.print(str);
+	}
+	public function redirect(dest: String) : Void {
+		Web.redirect(dest);
+	}
 }
 
 class Db {

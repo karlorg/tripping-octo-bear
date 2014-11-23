@@ -10,9 +10,7 @@ class Test {
 	public static function main() {
 		var r = new TestRunner();
 		r.add(new TestDb());
-		// testing WebApi methods prints out the whole response, can we
-		// avoid that?
-		// r.add(new TestWebApi());
+		r.add(new TestWebApi());
 
 		r.run();
 	}
@@ -68,8 +66,34 @@ class TestDb extends TestCase {
 	}
 }
 
+class MockServerOps implements Index.ServerOps {
+	public var api: WebApi;
+	public function new() {}
+	public function print(str: String) : Void { }
+	public function redirect(dest: String) : Void {
+		var re1 = ~/([^\?]+)([\?&]([^=]+)=([^&$]+))*/;
+		re1.match(dest);
+		var url = re1.matched(1);
+		var params = new Map<String,String>();
+		var i = 4;
+		while (re1.matched(i) != null) {
+			params.set(re1.matched(i-1), re1.matched(i));
+			i += 3;
+		}
+		haxe.web.Dispatch.run(url, params, api);
+	}
+}
+
 class TestWebApi extends TestCase {
-	private var w = new WebApi();
+	private var ops: MockServerOps;
+	private var w: WebApi;
+
+	public function new() {
+		super();
+		ops = new MockServerOps();
+		w = new WebApi(ops);
+		ops.api = w;
+	}
 
 	override public function setup() {
 		Db.close();
@@ -94,6 +118,56 @@ class TestWebApi extends TestCase {
 		assertEquals(game1.size, 19);
 		var game2 = games.last();
 		assertTrue(game1.id != game2.id);
+	}
+
+	public function testPlayMoves() {
+		w.doNewgame();
+		var game = GoGame.manager.select(true);
+		var gameId = game.id;
+		var moves = GoMove.manager.search(true);
+		assertEquals(moves.length, 0);
+		// no playNo/At => no move added
+		w.doGame({ gameId : gameId, playNo : null, playAt : null });
+		var moves = GoMove.manager.search(true);
+		assertEquals(moves.length, 0);
+		// playNo not next due => no move
+		w.doGame({ gameId : gameId, playNo : 1, playAt : "aa" });
+		var moves = GoMove.manager.search(true);
+		assertEquals(moves.length, 0);
+		// no playNo/At => no move added
+		w.doGame({ gameId : gameId, playNo : 0, playAt : null });
+		var moves = GoMove.manager.search(true);
+		assertEquals(moves.length, 0);
+		// move coords out of bounds => no move added
+		w.doGame({ gameId : gameId, playNo : 0, playAt : "zz" });
+		var moves = GoMove.manager.search(true);
+		assertEquals(moves.length, 0);
+		// first valid move
+		w.doGame({ gameId : gameId, playNo : 0, playAt : "cd" });
+		var moves = GoMove.manager.search(true);
+		assertEquals(moves.length, 1);
+		var move = moves.first();
+		assertEquals(move.moveNo, 0);
+		assertEquals(move.color, 0);
+		assertEquals(move.col, 2);
+		assertEquals(move.row, 3);
+		// playNo not next due => no move
+		w.doGame({ gameId : gameId, playNo : 0, playAt : "cc" });
+		var moves = GoMove.manager.search(true);
+		assertEquals(moves.length, 1);
+		// // same coords as existing stone => no move
+		/* removed until validation is added */
+		// w.doGame({ gameId : gameId, playNo : 1, playAt : "cd" });
+		// var moves = GoMove.manager.search(true);
+		// assertEquals(moves.length, 1);
+		// second valid move
+		w.doGame({ gameId : gameId, playNo : 1, playAt : "cc" });
+		var moves = GoMove.manager.search(true);
+		assertEquals(moves.length, 2);
+		var move = GoMove.manager.select($game == game && $moveNo == 1);
+		assertEquals(move.color, 1);
+		assertEquals(move.col, 2);
+		assertEquals(move.row, 2);
 	}
 
 }
