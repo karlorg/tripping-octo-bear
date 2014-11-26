@@ -16,20 +16,30 @@ class Test {
 	}
 }
 
-class TestDb extends TestCase {
+class TestWithDatabase extends TestCase {
+	private var databaseFile : String;
+	private function deletePhysicalDatabase(){
+		if (sys.FileSystem.exists(this.databaseFile)) {
+			sys.FileSystem.deleteFile(this.databaseFile);
+		}
+	}
+
 	override public function setup() {
 		Db.close();
-		if (sys.FileSystem.exists("test.sqlite")) {
-			sys.FileSystem.deleteFile("test.sqlite");
-		}
-		Db.init("test.sqlite");
+		this.deletePhysicalDatabase();
+		Db.init(this.databaseFile);
 	}
 
 	override public function tearDown() {
 		Db.close();
-		if (sys.FileSystem.exists("test.sqlite")) {
-			sys.FileSystem.deleteFile("test.sqlite");
-		}
+		this.deletePhysicalDatabase();
+	}
+}
+
+class TestDb extends TestWithDatabase {
+	public function new() {
+		super();
+		this.databaseFile = "test.sqlite";
 	}
 
 	public function testInit() {
@@ -84,7 +94,7 @@ class MockServerOps implements Index.ServerOps {
 	}
 }
 
-class TestWebApi extends TestCase {
+class TestWebApi extends TestWithDatabase {
 	private var ops: MockServerOps;
 	private var w: WebApi;
 
@@ -93,20 +103,7 @@ class TestWebApi extends TestCase {
 		ops = new MockServerOps();
 		w = new WebApi(ops);
 		ops.api = w;
-	}
-
-	override public function setup() {
-		Db.close();
-		if (sys.FileSystem.exists("gothing.sqlite")) {
-			sys.FileSystem.deleteFile("gothing.sqlite");
-		}
-	}
-
-	override public function tearDown() {
-		Db.close();
-		if (sys.FileSystem.exists("gothing.sqlite")) {
-			sys.FileSystem.deleteFile("gothing.sqlite");
-		}
+		this.databaseFile = "gothing.sqlite";
 	}
 
 	public function testNewGame() {
